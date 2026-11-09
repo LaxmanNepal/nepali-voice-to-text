@@ -7,12 +7,12 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 
 function cleanNepali(value) {
   return value
-    .replace(/(?:^|[\\s,])(?:अँहँ|अँ|मतलब|भनेको)(?=[\\s,।!?]|$)[,\\s]*/g, ' ')
-    .replace(/चाहिँ\\s+चाहिँ/g, 'चाहिँ')
-    .replace(/त्यो चाहिँ\\s*/g, 'त्यो ')
-    .replace(/\\s+([,।!?])/g, '$1')
-    .replace(/([,।!?])\\s*([,।!?])+/g, '$1')
-    .replace(/[ \\t]{2,}/g, ' ')
+    .replace(/(?:^|[\s,])(?:अँहँ|अँ|मतलब|भनेको)(?=[\s,।!?]|$)[,\s]*/g, ' ')
+    .replace(/चाहिँ\s+चाहिँ/g, 'चाहिँ')
+    .replace(/त्यो चाहिँ\s*/g, 'त्यो ')
+    .replace(/\s+([,।!?])/g, '$1')
+    .replace(/([,।!?])\s*([,।!?])+/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
 
@@ -26,7 +26,7 @@ function toRoman(input) {
     'ा':'a','ि':'i','ी':'ii','ु':'u','ू':'uu','ृ':'ri','े':'e','ै':'ai','ो':'o','ौ':'au','ं':'n','ँ':'n','ः':'h','्':'',
     '।':'.','ऽ':''
   };
-  return [...input].map(ch => map[ch] ?? ch).join('').replace(/([kgcjTDtdnpbmyrlvsh])a(?=[ािीुूृेैोौंँः्])/g, '$1').replace(/\\s+/g, ' ').trim();
+  return [...input].map(ch => map[ch] ?? ch).join('').replace(/([kgcjTDtdnpbmyrlvsh])a(?=[ािीुूृेैोौंँः्])/g, '$1').replace(/\s+/g, ' ').trim();
 }
 
 function App() {
@@ -195,7 +195,7 @@ function App() {
           <p className="mode-disclaimer">Clean र Pure Nepali हाल नियम-आधारित सफाइ हुन्, Generative AI Rewrite होइनन्।</p>
         </section>
         <section className="panel output-panel">
-          <div className="section-head"><div><h2>Your Transcript</h2><p>{raw.trim() ? `${raw.trim().split(/\\s+/).length} शब्द · ${raw.length} अक्षर` : 'तपाईंको ट्रान्सक्रिप्सन यहाँ देखिनेछ।'}</p></div><span className="output-tag">{output === 'roman' ? 'ROMAN' : 'UNICODE'}</span></div>
+          <div className="section-head"><div><h2>Your Transcript</h2><p>{raw.trim() ? `${raw.trim().split(/\s+/).length} शब्द · ${raw.length} अक्षर` : 'तपाईंको ट्रान्सक्रिप्सन यहाँ देखिनेछ।'}</p></div><span className="output-tag">{output === 'roman' ? 'ROMAN' : 'UNICODE'}</span></div>
           <textarea value={displayText} onChange={event => setManual(event.target.value)} placeholder="तपाईंले बोलेको टेक्स्ट यहाँ देखिनेछ…"/>
           <div className="interim">{interim && <><span className="live-dot"/> {interim}</>}</div>
           <div className="output-actions"><button className="primary-btn" onClick={copy} disabled={!displayText}><Copy size={16}/> Copy text</button><button className="secondary-btn" onClick={download} disabled={!displayText}><Download size={16}/> .TXT</button><button className="secondary-btn" onClick={() => { if (raw.trim()) setHistory(items => [{ id: Date.now(), text: raw, created: new Date().toLocaleString(), seconds }, ...items].slice(0, 50)); }} disabled={!raw.trim()}><History size={16}/> Save</button></div>
