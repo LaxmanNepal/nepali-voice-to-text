@@ -124,10 +124,14 @@ function App() {
       }
     };
     rec.onend = () => {
-      if (restartRef.current && !pausedRef.current) {
-        try { rec.start(); } catch { setListening(false); }
+      if (pausedRef.current) {
+        setListening(true);
+        setPaused(true);
+      } else if (restartRef.current) {
+        try { rec.start(); } catch { restartRef.current = false; setListening(false); }
       } else {
         setListening(false);
+        setPaused(false);
       }
     };
     restartRef.current = true;
