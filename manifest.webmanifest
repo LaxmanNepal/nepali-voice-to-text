@@ -1,9 +1,10 @@
 {
   "name": "Nepali Voice — Voice to Text",
   "short_name": "Nepali Voice",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#101827",
   "theme_color": "#101827",
+  "scope": "./",
   "icons": []
 }
