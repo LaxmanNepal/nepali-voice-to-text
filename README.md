@@ -37,3 +37,22 @@ npm run preview
 ## Privacy
 
 History is stored in this browser's `localStorage`. Do not store sensitive speech in this MVP. Browser recognition may use a remote recognition service. No audio upload endpoint is implemented by this project.
+
+## Install on your phone
+
+### Android (Chrome)
+1. Open the deployed site over HTTPS in Chrome.
+2. Tap the **Install App** button in the page, or open Chrome's **⋮** menu.
+3. Choose **Install app** (or **Add to Home screen**, depending on Chrome version).
+4. Open Nepali Voice from the new home-screen icon. It launches in standalone app mode.
+
+### iPhone / iPad (Safari)
+1. Open the deployed site in Safari.
+2. Tap **Share**.
+3. Choose **Add to Home Screen**, then confirm.
+
+The PWA caches the app shell after the first successful visit. This does **not** make speech recognition offline: the browser's recognition service may still require internet access.
+
+## GitHub Pages
+
+The repository includes a GitHub Actions workflow at `.github/workflows/deploy.yml`. On each push to `main`, it installs dependencies, builds the Vite app and deploys `dist` to GitHub Pages. In repository Settings → Pages, ensure the source is set to **GitHub Actions** if it is not already.
