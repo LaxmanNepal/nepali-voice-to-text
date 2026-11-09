@@ -33,6 +33,7 @@ function App() {
   const [speaking, setSpeaking] = useState(false);
   const [toast, setToast] = useState('');
   const recognitionRef = useRef(null);
+  const processedFinalIndexRef = useRef(0);
   const shouldListenRef = useRef(false);
   const pausedRef = useRef(false);
   const mediaRef = useRef(null);
@@ -90,14 +91,25 @@ function App() {
     rec.lang = language === 'auto' ? '' : language;
     rec.continuous = true;
     rec.interimResults = true;
-    rec.maxAlternatives = 3;
+    rec.maxAlternatives = 1;
+    // Chrome may resend earlier entries in the cumulative results list.
+    // Commit each final result index once per recognition session.
+    processedFinalIndexRef.current = 0;
+    rec.onstart = () => { processedFinalIndexRef.current = 0; };
     rec.onresult = event => {
       let finalChunk = '';
       let interimChunk = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      const firstNewIndex = Math.max(event.resultIndex || 0, processedFinalIndexRef.current);
+      for (let i = firstNewIndex; i < event.results.length; i++) {
         const result = event.results[i];
-        if (result.isFinal) finalChunk += result[0].transcript;
-        else interimChunk += result[0].transcript;
+        const transcript = result?.[0]?.transcript?.trim();
+        if (!transcript) continue;
+        if (result.isFinal) {
+          finalChunk += (finalChunk ? ' ' : '') + transcript;
+          processedFinalIndexRef.current = i + 1;
+        } else {
+          interimChunk += (interimChunk ? ' ' : '') + transcript;
+        }
       }
       if (finalChunk) setText(prev => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + finalChunk);
       setInterim(interimChunk);
