@@ -5,6 +5,19 @@ import './styles.css';
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
+function useInstallPrompt() {
+  const [promptEvent, setPromptEvent] = useState(null);
+  const [installed, setInstalled] = useState(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
+  useEffect(() => {
+    const onBeforeInstall = event => { event.preventDefault(); setPromptEvent(event); };
+    const onInstalled = () => { setInstalled(true); setPromptEvent(null); };
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => { window.removeEventListener('beforeinstallprompt', onBeforeInstall); window.removeEventListener('appinstalled', onInstalled); };
+  }, []);
+  return { promptEvent, installed, setPromptEvent };
+}
+
 function cleanNepali(value) {
   return value
     .replace(/(?:^|[\s,])(?:अँहँ|अँ|मतलब|भनेको)(?=[\s,।!?]|$)[,\s]*/g, ' ')
@@ -44,6 +57,8 @@ function App() {
     try { return JSON.parse(localStorage.getItem('nv-history') || '[]'); } catch { return []; }
   });
   const [tab, setTab] = useState('write');
+  const [installMessage, setInstallMessage] = useState('');
+  const { promptEvent, installed, setPromptEvent } = useInstallPrompt();
   const recRef = useRef(null);
   const restartRef = useRef(false);
   const pausedRef = useRef(false);
@@ -51,6 +66,21 @@ function App() {
   const supported = !!SpeechRecognition;
 
   useEffect(() => { localStorage.setItem('nv-history', JSON.stringify(history)); }, [history]);
+  useEffect(() => {
+    if ('serviceWorker' in navigator && import.meta.env.PROD) navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {});
+  }, []);
+
+  async function installApp() {
+    if (promptEvent) {
+      promptEvent.prompt();
+      const choice = await promptEvent.userChoice;
+      if (choice && choice.outcome === 'accepted') setInstallMessage('Nepali Voice install हुँदैछ।');
+      setPromptEvent(null);
+      return;
+    }
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    setInstallMessage(isIOS ? 'Safari को Share बटन थिच्नुहोस् → Add to Home Screen छान्नुहोस्।' : 'Chrome को ⋮ मेनु खोल्नुहोस् → Install app वा Add to Home screen छान्नुहोस्।');
+  }
   useEffect(() => {
     if (listening && !paused) timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
     else clearInterval(timerRef.current);
@@ -173,10 +203,11 @@ function App() {
   return <div className="app-shell">
     <header className="topbar">
       <a className="brand" href="#"><span className="brand-mark"><AudioLines size={21}/></span><span>Nepali <b>Voice</b><small>VOICE TO TEXT STUDIO</small></span></a>
-      <div className="top-actions"><span className="free-pill">● FREE MODE</span><button className="icon-btn" title="History" onClick={() => setTab(tab === 'history' ? 'write' : 'history')}><History size={19}/></button></div>
+      <div className="top-actions"><span className="free-pill">● FREE MODE</span><button className="install-btn" onClick={installApp} disabled={installed}>{installed ? <Check size={15}/> : <Download size={15}/>} {installed ? "Installed" : "Install App"}</button><button className="icon-btn" title="History" onClick={() => setTab(tab === 'history' ? 'write' : 'history')}><History size={19}/></button></div>
     </header>
     <main className="main">
       <section className="intro"><div className="eyebrow"><Sparkles size={14}/> NEPALI-FIRST SPEECH WORKSPACE</div><h1>बोल्नुहोस्।<br/><span>सफा टेक्स्ट पाउनुहोस्।</span></h1><p>आफ्नो प्राकृतिक शैलीमा बोल्नुहोस्। नेपाली वा Roman Nepali मा रूपान्तरण गर्नुहोस्।</p></section>
+      {installMessage && <div className="install-tip" role="status"><span>{installMessage}</span><button onClick={() => setInstallMessage('')} aria-label="Dismiss">×</button></div>}
       {tab === 'history' ? <section className="panel history-panel">
         <div className="section-head"><div><h2>Recording History</h2><p>यो इतिहास यही Browser मा सुरक्षित हुन्छ।</p></div><button className="text-btn danger" onClick={() => { setHistory([]); localStorage.removeItem('nv-history'); }}><Trash2 size={15}/> Clear all</button></div>
         {history.length === 0 ? <div className="empty"><History size={30}/><b>अहिलेसम्म History छैन</b><span>तपाईंले रेकर्डिङ रोक्दा यहाँ देखिनेछ।</span></div> : history.map(item => <button className="history-item" key={item.id} onClick={() => loadItem(item)}><span>{item.text.slice(0, 130)}{item.text.length > 130 ? '…' : ''}</span><small>{item.created} · {fmt(item.seconds || 0)}</small></button>)}
