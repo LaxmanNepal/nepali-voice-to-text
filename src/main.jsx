@@ -1,67 +1,41 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Mic, Square, Copy, Download, Trash2, Languages, History, AudioLines, AlertCircle, Check, Pause, Play, RotateCcw, Sparkles } from 'lucide-react';
+import {
+  AudioLines, Mic, Square, Copy, Download, Settings2, History, Languages,
+  Play, Pause, Volume2, Trash2, Check, X, RotateCcw, FileAudio,
+  Sparkles, CircleStop, Headphones, ChevronDown, AlertCircle
+} from 'lucide-react';
 import './styles.css';
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-function useInstallPrompt() {
-  const [promptEvent, setPromptEvent] = useState(null);
-  const [installed, setInstalled] = useState(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
-  useEffect(() => {
-    const onBeforeInstall = event => { event.preventDefault(); setPromptEvent(event); };
-    const onInstalled = () => { setInstalled(true); setPromptEvent(null); };
-    window.addEventListener('beforeinstallprompt', onBeforeInstall);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => { window.removeEventListener('beforeinstallprompt', onBeforeInstall); window.removeEventListener('appinstalled', onInstalled); };
-  }, []);
-  return { promptEvent, installed, setPromptEvent };
-}
-
-function cleanNepali(value) {
-  return value
-    .replace(/(?:^|[\s,])(?:अँहँ|अँ|मतलब|भनेको)(?=[\s,।!?]|$)[,\s]*/g, ' ')
-    .replace(/चाहिँ\s+चाहिँ/g, 'चाहिँ')
-    .replace(/त्यो चाहिँ\s*/g, 'त्यो ')
-    .replace(/\s+([,।!?])/g, '$1')
-    .replace(/([,।!?])\s*([,।!?])+/g, '$1')
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
-}
-
-// Convenience transliteration only; this is not a standards-compliant Nepali romanizer.
-function toRoman(input) {
-  const map = {
-    'अ':'a','आ':'aa','इ':'i','ई':'ii','उ':'u','ऊ':'uu','ऋ':'ri','ए':'e','ऐ':'ai','ओ':'o','औ':'au',
-    'क':'ka','ख':'kha','ग':'ga','घ':'gha','ङ':'nga','च':'cha','छ':'chha','ज':'ja','झ':'jha','ञ':'nya',
-    'ट':'Ta','ठ':'Tha','ड':'Da','ढ':'Dha','ण':'Na','त':'ta','थ':'tha','द':'da','ध':'dha','न':'na',
-    'प':'pa','फ':'pha','ब':'ba','भ':'bha','म':'ma','य':'ya','र':'ra','ल':'la','व':'wa','श':'sha','ष':'Sha','स':'sa','ह':'ha',
-    'ा':'a','ि':'i','ी':'ii','ु':'u','ू':'uu','ृ':'ri','े':'e','ै':'ai','ो':'o','ौ':'au','ं':'n','ँ':'n','ः':'h','्':'',
-    '।':'.','ऽ':''
-  };
-  return [...input].map(ch => map[ch] ?? ch).join('').replace(/([kgcjTDtdnpbmyrlvsh])a(?=[ािीुूृेैोौंँः्])/g, '$1').replace(/\s+/g, ' ').trim();
-}
-
 function App() {
-  const [mode, setMode] = useState('clean');
-  const [output, setOutput] = useState('devanagari');
-  const [language, setLanguage] = useState('ne-NP');
-  const [raw, setRaw] = useState('');
-  const [manual, setManual] = useState(null);
+  const [text, setText] = useState('');
   const [interim, setInterim] = useState('');
+  const [language, setLanguage] = useState('ne-NP');
+  const [format, setFormat] = useState('raw');
   const [listening, setListening] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [speechPaused, setSpeechPaused] = useState(false);
   const [error, setError] = useState('');
-  const [seconds, setSeconds] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem('nv-history') || '[]'); } catch { return []; }
   });
-  const [tab, setTab] = useState('write');
-  const [installMessage, setInstallMessage] = useState('');
-  const { promptEvent, installed, setPromptEvent } = useInstallPrompt();
-  const recRef = useRef(null);
-  const restartRef = useRef(false);
+  const [audioState, setAudioState] = useState('idle');
+  const [audioUrl, setAudioUrl] = useState('');
+  const [audioName, setAudioName] = useState('');
+  const [audioSeconds, setAudioSeconds] = useState(0);
+  const [voiceList, setVoiceList] = useState([]);
+  const [voiceURI, setVoiceURI] = useState('');
+  const [speaking, setSpeaking] = useState(false);
+  const [toast, setToast] = useState('');
+  const recognitionRef = useRef(null);
+  const shouldListenRef = useRef(false);
   const pausedRef = useRef(false);
+  const mediaRef = useRef(null);
+  const chunksRef = useRef([]);
+  const audioRef = useRef(null);
   const timerRef = useRef(null);
   const supported = !!SpeechRecognition;
 
@@ -69,176 +43,216 @@ function App() {
   useEffect(() => {
     if ('serviceWorker' in navigator && import.meta.env.PROD) navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {});
   }, []);
-
-  async function installApp() {
-    if (promptEvent) {
-      promptEvent.prompt();
-      const choice = await promptEvent.userChoice;
-      if (choice && choice.outcome === 'accepted') setInstallMessage('Nepali Voice install हुँदैछ।');
-      setPromptEvent(null);
-      return;
-    }
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    setInstallMessage(isIOS ? 'Safari को Share बटन थिच्नुहोस् → Add to Home Screen छान्नुहोस्।' : 'Chrome को ⋮ मेनु खोल्नुहोस् → Install app वा Add to Home screen छान्नुहोस्।');
-  }
   useEffect(() => {
-    if (listening && !paused) timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
+    const load = () => {
+      const voices = window.speechSynthesis?.getVoices?.() || [];
+      setVoiceList(voices);
+      if (!voiceURI && voices.length) {
+        const preferred = voices.find(v => /ne[-_]np/i.test(v.lang)) || voices.find(v => /en[-_]us/i.test(v.lang)) || voices[0];
+        setVoiceURI(preferred?.voiceURI || '');
+      }
+    };
+    load();
+    window.speechSynthesis?.addEventListener?.('voiceschanged', load);
+    return () => window.speechSynthesis?.removeEventListener?.('voiceschanged', load);
+  }, [voiceURI]);
+  useEffect(() => {
+    if (audioState === 'recording') timerRef.current = setInterval(() => setAudioSeconds(s => s + 1), 1000);
     else clearInterval(timerRef.current);
     return () => clearInterval(timerRef.current);
-  }, [listening, paused]);
+  }, [audioState]);
+  useEffect(() => () => {
+    try { recognitionRef.current?.stop(); } catch {}
+    try { mediaRef.current?.stream?.getTracks().forEach(t => t.stop()); } catch {}
+    window.speechSynthesis?.cancel();
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+  }, [audioUrl]);
 
-  const transcript = mode === 'raw' ? raw : cleanNepali(raw);
-  const finalText = output === 'roman' ? toRoman(transcript) : transcript;
-  const displayText = manual === null ? finalText : manual;
+  const notify = message => { setToast(message); window.setTimeout(() => setToast(''), 2400); };
+  const fmt = n => `${Math.floor(n / 60).toString().padStart(2, '0')}:${(n % 60).toString().padStart(2, '0')}`;
 
-  function start() {
-    if (!supported) {
-      setError('यो Browser मा Speech Recognition उपलब्ध छैन। Android मा Chrome प्रयोग गरेर प्रयास गर्नुहोस्।');
-      return;
-    }
+  function cleanText(value) {
+    return value.replace(/(?:^|[\\s,])(?:अँहँ|अँ|मतलब)(?=[\\s,।!?]|$)[,\\s]*/g, ' ')
+      .replace(/\\s+([,।!?])/g, '$1').replace(/([,।!?])\\s*([,।!?])+/g, '$1')
+      .replace(/[ \\t]{2,}/g, ' ').trim();
+  }
+  const editorValue = format === 'clean' ? cleanText(text) : text;
+  const wordCount = editorValue.trim() ? editorValue.trim().split(/\\s+/).length : 0;
+
+  function startSpeech() {
+    if (!supported) { setError('यो ब्राउजरले Speech Recognition समर्थन गर्दैन। Android Chrome प्रयोग गर्नुहोस्।'); return; }
     setError('');
-    setManual(null);
+    try { recognitionRef.current?.stop(); } catch {}
     const rec = new SpeechRecognition();
-    recRef.current = rec;
+    recognitionRef.current = rec;
     rec.lang = language;
     rec.continuous = true;
     rec.interimResults = true;
-    rec.maxAlternatives = 1;
+    rec.maxAlternatives = 3;
     rec.onresult = event => {
-      let finals = '';
-      let currentInterim = '';
-      // Only consume results added/updated by this event; earlier finals are not appended again.
+      let finalChunk = '';
+      let interimChunk = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
-        if (result.isFinal) finals += result[0].transcript.trim() + ' ';
-        else currentInterim += result[0].transcript;
+        if (result.isFinal) finalChunk += result[0].transcript;
+        else interimChunk += result[0].transcript;
       }
-      if (finals.trim()) setRaw(previous => (previous + ' ' + finals).trim());
-      setInterim(currentInterim);
+      if (finalChunk) setText(prev => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + finalChunk);
+      setInterim(interimChunk);
     };
     rec.onerror = event => {
-      setError(event.error === 'not-allowed' ? 'Microphone अनुमति दिनुहोस्।' : `Speech recognition error: ${event.error}`);
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        restartRef.current = false;
+      const messages = {
+        'not-allowed': 'माइक्रोफोन अनुमति दिनुहोस्। Browser settings मा Microphone Allow गर्नुहोस्।',
+        'service-not-allowed': 'Speech service उपलब्ध छैन। इन्टरनेट र Browser permission जाँच्नुहोस्।',
+        'no-speech': 'आवाज सुनिएन। फेरि बोल्नुहोस्।',
+        'network': 'Speech recognition का लागि नेटवर्क समस्या भयो।',
+        'audio-capture': 'माइक्रोफोन भेटिएन।'
+      };
+      setError(messages[event.error] || `Speech recognition समस्या: ${event.error}`);
+      if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(event.error)) {
+        shouldListenRef.current = false;
         setListening(false);
       }
     };
     rec.onend = () => {
-      if (pausedRef.current) {
+      if (shouldListenRef.current && !pausedRef.current) {
+        try { rec.start(); } catch { shouldListenRef.current = false; setListening(false); }
+      } else if (pausedRef.current) {
         setListening(true);
-        setPaused(true);
-      } else if (restartRef.current) {
-        try { rec.start(); } catch { restartRef.current = false; setListening(false); }
+        setSpeechPaused(true);
       } else {
         setListening(false);
-        setPaused(false);
+        setSpeechPaused(false);
       }
     };
-    restartRef.current = true;
+    shouldListenRef.current = true;
     pausedRef.current = false;
     setListening(true);
-    setPaused(false);
-    setSeconds(0);
-    setRaw('');
+    setSpeechPaused(false);
     setInterim('');
-    try { rec.start(); }
-    catch { restartRef.current = false; setListening(false); setError('Recording सुरु हुन सकेन। पुनः प्रयास गर्नुहोस्।'); }
+    try { rec.start(); } catch { shouldListenRef.current = false; setListening(false); setError('माइक सुरु हुन सकेन। फेरि प्रयास गर्नुहोस्।'); }
   }
-
-  function pause() {
-    pausedRef.current = true;
-    restartRef.current = false;
-    setPaused(true);
-    try { recRef.current?.stop(); } catch {}
-  }
-
-  function resume() {
-    if (!supported || !recRef.current) { start(); return; }
-    pausedRef.current = false;
-    restartRef.current = true;
-    try { recRef.current.start(); setPaused(false); setListening(true); }
-    catch { setError('Resume गर्न सकिएन। Stop गरेर फेरि सुरु गर्नुहोस्।'); }
-  }
-
-  function stop(save = true) {
-    restartRef.current = false;
+  function stopSpeech() {
+    shouldListenRef.current = false;
     pausedRef.current = false;
     setListening(false);
-    setPaused(false);
+    setSpeechPaused(false);
     setInterim('');
-    try { recRef.current?.stop(); } catch {}
-    if (save && raw.trim()) {
-      setHistory(items => [{ id: Date.now(), text: raw, created: new Date().toLocaleString(), seconds }, ...items].slice(0, 50));
+    try { recognitionRef.current?.stop(); } catch {}
+  }
+  function toggleSpeech() { listening ? stopSpeech() : startSpeech(); }
+  function pauseSpeech() {
+    pausedRef.current = true;
+    shouldListenRef.current = false;
+    setSpeechPaused(true);
+    try { recognitionRef.current?.stop(); } catch {}
+  }
+  function resumeSpeech() {
+    if (!supported) return;
+    pausedRef.current = false;
+    shouldListenRef.current = true;
+    setSpeechPaused(false);
+    try { recognitionRef.current?.start(); } catch { startSpeech(); }
+  }
+
+  async function startAudio() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find(t => window.MediaRecorder?.isTypeSupported?.(t));
+      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      mediaRef.current = recorder;
+      chunksRef.current = [];
+      recorder.ondataavailable = e => { if (e.data.size) chunksRef.current.push(e.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        if (audioUrl) URL.revokeObjectURL(audioUrl);
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+        setAudioName(`voice-recording-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`);
+        setAudioState('saved');
+        stream.getTracks().forEach(t => t.stop());
+      };
+      recorder.start(500);
+      setAudioSeconds(0);
+      setAudioState('recording');
+      setError('');
+    } catch (e) {
+      setError(e?.name === 'NotAllowedError' ? 'अडियो रेकर्डिङका लागि Microphone अनुमति दिनुहोस्।' : 'अडियो रेकर्डिङ सुरु हुन सकेन।');
     }
   }
-
-  function clear() {
-    stop(false);
-    setRaw('');
-    setManual(null);
-    setSeconds(0);
-    setError('');
+  function stopAudio() {
+    if (mediaRef.current && mediaRef.current.state !== 'inactive') mediaRef.current.stop();
   }
-
-  async function copy() {
-    try { await navigator.clipboard.writeText(displayText); setError('Copied to clipboard.'); }
-    catch { setError('Copy गर्न सकिएन। टेक्स्ट छानेर Copy गर्नुहोस्।'); }
+  function pauseAudio() {
+    if (mediaRef.current?.state === 'recording') { mediaRef.current.pause(); setAudioState('paused'); }
+    else if (mediaRef.current?.state === 'paused') { mediaRef.current.resume(); setAudioState('recording'); }
   }
-
-  function download() {
-    const blob = new Blob([displayText], { type: 'text/plain;charset=utf-8' });
+  function playVoice() {
+    if (!editorValue.trim() || !window.speechSynthesis) { setError('यो डिभाइसमा Text-to-Speech उपलब्ध छैन।'); return; }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(editorValue);
+    const selected = voiceList.find(v => v.voiceURI === voiceURI);
+    if (selected) { utterance.voice = selected; utterance.lang = selected.lang; }
+    else utterance.lang = language;
+    utterance.onstart = () => setSpeaking(true);
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  }
+  function stopVoice() { window.speechSynthesis?.cancel(); setSpeaking(false); }
+  async function copyText() {
+    try { await navigator.clipboard.writeText(editorValue); notify('टेक्स्ट Copy भयो'); }
+    catch { setError('Copy गर्न सकिएन। Text छानेर Copy गर्नुहोस्।'); }
+  }
+  function downloadText() {
+    const blob = new Blob([editorValue], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'nepali-voice-transcript.txt';
-    anchor.click();
-    URL.revokeObjectURL(url);
+    const a = document.createElement('a'); a.href = url; a.download = 'nepali-voice-text.txt'; a.click(); URL.revokeObjectURL(url);
   }
-
-  function loadItem(item) {
-    stop(false);
-    setRaw(item.text);
-    setManual(null);
-    setTab('write');
+  function saveHistory() {
+    if (!editorValue.trim()) return;
+    setHistory(items => [{ id: Date.now(), text: editorValue, created: new Date().toLocaleString() }, ...items].slice(0, 50));
+    notify('History मा सुरक्षित भयो');
   }
-
-  const fmt = value => `${Math.floor(value / 60).toString().padStart(2, '0')}:${(value % 60).toString().padStart(2, '0')}`;
+  function reset() { stopSpeech(); setText(''); setInterim(''); setError(''); }
 
   return <div className="app-shell">
     <header className="topbar">
-      <a className="brand" href="#"><span className="brand-mark"><AudioLines size={21}/></span><span>Nepali <b>Voice</b><small>VOICE TO TEXT STUDIO</small></span></a>
-      <div className="top-actions"><span className="free-pill">● FREE MODE</span><button className="install-btn" onClick={installApp} disabled={installed}>{installed ? <Check size={15}/> : <Download size={15}/>} {installed ? "Installed" : "Install App"}</button><button className="icon-btn" title="History" onClick={() => setTab(tab === 'history' ? 'write' : 'history')}><History size={19}/></button></div>
+      <a className="brand" href="#"><span className="brand-mark"><AudioLines size={21}/></span><span>Nepali <b>Voice</b><small>VOICE WORKSPACE</small></span></a>
+      <nav className="top-actions">
+        <button className="nav-btn" onClick={() => setHistoryOpen(true)}><History size={17}/> <span>History</span></button>
+        <button className="nav-btn settings-nav" onClick={() => setSettingsOpen(true)}><Settings2 size={17}/> <span>Settings</span></button>
+      </nav>
     </header>
-    <main className="main">
-      <section className="intro"><div className="eyebrow"><Sparkles size={14}/> NEPALI-FIRST SPEECH WORKSPACE</div><h1>बोल्नुहोस्।<br/><span>सफा टेक्स्ट पाउनुहोस्।</span></h1><p>आफ्नो प्राकृतिक शैलीमा बोल्नुहोस्। नेपाली वा Roman Nepali मा रूपान्तरण गर्नुहोस्।</p></section>
-      {installMessage && <div className="install-tip" role="status"><span>{installMessage}</span><button onClick={() => setInstallMessage('')} aria-label="Dismiss">×</button></div>}
-      {tab === 'history' ? <section className="panel history-panel">
-        <div className="section-head"><div><h2>Recording History</h2><p>यो इतिहास यही Browser मा सुरक्षित हुन्छ।</p></div><button className="text-btn danger" onClick={() => { setHistory([]); localStorage.removeItem('nv-history'); }}><Trash2 size={15}/> Clear all</button></div>
-        {history.length === 0 ? <div className="empty"><History size={30}/><b>अहिलेसम्म History छैन</b><span>तपाईंले रेकर्डिङ रोक्दा यहाँ देखिनेछ।</span></div> : history.map(item => <button className="history-item" key={item.id} onClick={() => loadItem(item)}><span>{item.text.slice(0, 130)}{item.text.length > 130 ? '…' : ''}</span><small>{item.created} · {fmt(item.seconds || 0)}</small></button>)}
-      </section> : <>
-        <section className="panel recorder">
-          <div className="section-head"><div><h2>Voice Recorder</h2><p>रेकर्ड गर्न थिच्नुहोस् र स्वाभाविक रूपमा बोल्नुहोस्।</p></div><span className={`status ${listening ? 'live' : ''}`}><i/>{listening ? (paused ? 'PAUSED' : 'LISTENING') : 'READY'}</span></div>
-          <div className={`mic-stage ${listening && !paused ? 'active' : ''}`}><div className="sound-wave">{Array.from({ length: 31 }, (_, i) => <i key={i} style={{ '--h': `${12 + (i * 19 % 33)}px` }}/>)}</div><button className={`mic-button ${listening ? 'recording' : ''}`} onClick={() => listening ? stop() : start()} aria-label={listening ? 'Stop recording' : 'Start recording'}>{listening ? <Square size={27} fill="currentColor"/> : <Mic size={30}/>}</button><div className="record-time">{fmt(seconds)}</div><div className="mic-hint">{listening ? (paused ? 'रेकर्डिङ रोकिएको छ' : 'तपाईंको आवाज सुन्दैछ…') : 'रेकर्डिङ सुरु गर्न माइक्रोफोन थिच्नुहोस्'}</div></div>
-          <div className="rec-controls">{listening && <button className="secondary-btn" onClick={paused ? resume : pause}>{paused ? <Play size={16}/> : <Pause size={16}/>} {paused ? 'Resume' : 'Pause'}</button>}<button className="secondary-btn" onClick={clear}><RotateCcw size={16}/> Reset</button><span className="rec-note">{supported ? 'Browser speech recognition' : 'Speech recognition unsupported'}</span></div>
-          {!supported && <div className="warning"><AlertCircle size={17}/> यो Browser मा Speech Recognition उपलब्ध छैन। Chrome वा समर्थित Browser प्रयोग गर्नुहोस्।</div>}
-          {error && <div className="notice" onClick={() => setError('')}>{error} <span>×</span></div>}
-        </section>
-        <section className="panel settings">
-          <div className="section-head"><div><h2>Output Settings</h2><p>तपाईंलाई चाहिएको लेखन शैली छान्नुहोस्।</p></div><Languages size={20} className="muted"/></div>
-          <div className="setting-grid"><label><span>Speech language</span><select value={language} onChange={event => setLanguage(event.target.value)}><option value="ne-NP">नेपाली (Nepal)</option><option value="en-US">English (US)</option><option value="hi-IN">Hindi</option></select></label><label><span>Writing format</span><select value={output} onChange={event => setOutput(event.target.value)}><option value="devanagari">नेपाली Unicode</option><option value="roman">Roman Nepali</option></select></label></div>
-          <div className="mode-label">TRANSCRIPTION STYLE</div><div className="mode-options">{[['raw', 'Raw', 'जस्ताको तस्तै'], ['clean', 'Clean', 'फिलर शब्द हटाउने'], ['formal', 'Pure Nepali', 'शुद्ध भाषा']].map(([value, title, desc]) => <button key={value} className={`mode-card ${mode === value ? 'selected' : ''}`} onClick={() => setMode(value)}><b>{title}</b><small>{desc}</small>{mode === value && <Check size={15}/>}</button>)}</div>
-          <p className="mode-disclaimer">Clean र Pure Nepali हाल नियम-आधारित सफाइ हुन्, Generative AI Rewrite होइनन्।</p>
-        </section>
-        <section className="panel output-panel">
-          <div className="section-head"><div><h2>Your Transcript</h2><p>{raw.trim() ? `${raw.trim().split(/\s+/).length} शब्द · ${raw.length} अक्षर` : 'तपाईंको ट्रान्सक्रिप्सन यहाँ देखिनेछ।'}</p></div><span className="output-tag">{output === 'roman' ? 'ROMAN' : 'UNICODE'}</span></div>
-          <textarea value={displayText} onChange={event => setManual(event.target.value)} placeholder="तपाईंले बोलेको टेक्स्ट यहाँ देखिनेछ…"/>
-          <div className="interim">{interim && <><span className="live-dot"/> {interim}</>}</div>
-          <div className="output-actions"><button className="primary-btn" onClick={copy} disabled={!displayText}><Copy size={16}/> Copy text</button><button className="secondary-btn" onClick={download} disabled={!displayText}><Download size={16}/> .TXT</button><button className="secondary-btn" onClick={() => { if (raw.trim()) setHistory(items => [{ id: Date.now(), text: raw, created: new Date().toLocaleString(), seconds }, ...items].slice(0, 50)); }} disabled={!raw.trim()}><History size={16}/> Save</button></div>
-        </section>
-      </>}
-      <section className="privacy"><AlertCircle size={16}/><div><b>Privacy & zero-cost note</b><p>यो MVP ले कुनै Paid API प्रयोग गर्दैन। तर Browser को Speech Recognition ले तपाईंको आवाज बाह्य recognition service मा पठाउन सक्छ। यो पूर्ण Offline वा end-to-end private प्रणाली होइन। संवेदनशील कुरा रेकर्ड नगर्नुहोस्।</p></div></section>
-      <footer>NEPALI VOICE <span>·</span> MVP 0.1.0 <span>·</span> Built for Nepali speakers</footer>
+
+    <main className="workspace">
+      <div className="workspace-heading"><div><div className="eyebrow"><Sparkles size={14}/> NEPALI-FIRST · FREE WORKSPACE</div><h1>आफ्नो कुरा <span>लेख्नुहोस्।</span></h1><p>बोल्नुहोस्, लाइभ टेक्स्ट हेर्नुहोस्, सम्पादन गर्नुहोस् र आवाजमा सुन्नुहोस्।</p></div><div className={listening ? 'live-status on' : 'live-status'}><i/>{listening ? (speechPaused ? 'PAUSED' : 'LIVE') : 'READY'}</div></div>
+
+      <section className="editor-card">
+        <div className="editor-toolbar"><div className="editor-label"><span className="editor-icon"><Languages size={17}/></span><div><b>तपाईंको लेख्ने ठाउँ</b><small>{language === 'ne-NP' ? 'नेपाली Speech' : 'English Speech'} · {wordCount} शब्द</small></div></div><div className="format-switch"><button className={format === 'raw' ? 'chosen' : ''} onClick={() => setFormat('raw')}>Raw</button><button className={format === 'clean' ? 'chosen' : ''} onClick={() => setFormat('clean')}>Clean</button></div></div>
+        <div className="editor-wrap"><textarea className="main-editor" value={editorValue + (interim ? (editorValue && !editorValue.endsWith(' ') ? ' ' : '') + interim : '')} onChange={e => { setText(e.target.value); setFormat('raw'); }} placeholder="यहाँ टाइप गर्नुहोस् वा तलको माइक थिचेर बोल्न सुरु गर्नुहोस्…"/><div className="editor-foot"><span>{interim ? <><i className="pulse-dot"/> {interim}</> : 'तपाईंको टेक्स्ट यहीँ स्वतः देखिनेछ'}</span><span>{editorValue.length} characters</span></div></div>
+        <button className={`floating-mic ${listening && !speechPaused ? 'is-listening' : ''}`} onClick={toggleSpeech} aria-label={listening ? 'Stop dictation' : 'Start dictation'}>{listening ? <Square size={23} fill="currentColor"/> : <Mic size={25}/>}<span>{listening ? 'Stop dictation' : 'बोल्न सुरु गर्नुहोस्'}</span></button>
+        {listening && <div className="dictation-tools"><button onClick={speechPaused ? resumeSpeech : pauseSpeech}>{speechPaused ? <Play size={15}/> : <Pause size={15}/>} {speechPaused ? 'Resume' : 'Pause'}</button><button onClick={stopSpeech}><CircleStop size={15}/> Finish</button></div>}
+        <div className="editor-actions"><button className="action-primary" onClick={copyText} disabled={!editorValue}><Copy size={16}/> Copy</button><button onClick={downloadText} disabled={!editorValue}><Download size={16}/> Download .TXT</button><button onClick={saveHistory} disabled={!editorValue}><History size={16}/> Save</button><button onClick={reset}><RotateCcw size={16}/> Clear</button><span className="action-spacer"/><button className="listen-text" onClick={speaking ? stopVoice : playVoice} disabled={!editorValue}>{speaking ? <Square size={15}/> : <Play size={15}/>} {speaking ? 'Stop voice' : 'Play voice'}</button></div>
+      </section>
+
+      <section className="audio-card">
+        <div className="audio-heading"><div className="audio-symbol"><FileAudio size={19}/></div><div><h2>Voice Recording</h2><p>टेक्स्ट डिक्टेसनभन्दा अलग आफ्नो वास्तविक आवाज रेकर्ड गर्नुहोस्।</p></div><span className={audioState === 'recording' ? 'rec-badge active' : 'rec-badge'}>{audioState === 'recording' ? 'RECORDING' : audioState === 'paused' ? 'PAUSED' : audioState === 'saved' ? 'SAVED' : 'AUDIO'}</span></div>
+        <div className="audio-controls"><div className="audio-timer">{fmt(audioSeconds)}</div><div className="audio-buttons">{audioState === 'idle' || audioState === 'saved' ? <button className="record-btn" onClick={startAudio}><Mic size={17}/> Record audio</button> : <><button className="record-btn stop-btn" onClick={stopAudio}><Square size={15} fill="currentColor"/> Stop</button><button className="audio-secondary" onClick={pauseAudio}>{audioState === 'paused' ? <Play size={15}/> : <Pause size={15}/>} {audioState === 'paused' ? 'Resume' : 'Pause'}</button></>}</div></div>
+        {audioUrl && <div className="audio-playback"><audio ref={audioRef} src={audioUrl} controls/><a href={audioUrl} download={audioName}><Download size={15}/> Download recording</a></div>}
+      </section>
+
+      <section className="tts-card"><div className="tts-copy"><div className="tts-icon"><Volume2 size={19}/></div><div><b>Text to Voice</b><p>तपाईंले लेखेको टेक्स्ट डिभाइसमा उपलब्ध आवाजबाट सुन्नुहोस्।</p></div></div><div className="tts-action"><select value={voiceURI} onChange={e => setVoiceURI(e.target.value)} aria-label="Choose voice"><option value="">Automatic voice</option>{voiceList.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name} · {v.lang}</option>)}</select><button onClick={speaking ? stopVoice : playVoice} disabled={!editorValue}>{speaking ? <Square size={15}/> : <Play size={15}/>} {speaking ? 'Stop' : 'Play text'}</button></div><small className="tts-note">आवाजको उपलब्धता तपाईंको फोन/ब्राउजरमा निर्भर हुन्छ। यो ब्राउजर TTS हो, डाउनलोड गर्न मिल्ने AI audio generation होइन।</small></section>
+
+      {error && <div className="error-banner"><AlertCircle size={17}/><span>{error}</span><button onClick={() => setError('')}><X size={16}/></button></div>}
+      <div className="privacy-note"><AlertCircle size={15}/><span>Speech recognition ब्राउजरको अनलाइन सेवामा निर्भर हुन सक्छ। वास्तविक अडियो रेकर्डिङ तपाईंको डिभाइसमा तयार हुन्छ। संवेदनशील सामग्री रेकर्ड नगर्नुहोस्।</span></div>
+      <footer>NEPALI VOICE <span>·</span> FREE & OPEN SOURCE WORKSPACE</footer>
     </main>
+
+    {settingsOpen && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setSettingsOpen(false); }}><section className="settings-modal"><div className="modal-head"><div><h2><Settings2 size={19}/> Advanced Settings</h2><p>भाषा र आवाजको प्राथमिकता छान्नुहोस्।</p></div><button onClick={() => setSettingsOpen(false)}><X size={19}/></button></div><label className="setting-field"><span>Speech recognition language</span><select value={language} onChange={e => { setLanguage(e.target.value); if (listening) stopSpeech(); }}><option value="ne-NP">नेपाली — प्राथमिक</option><option value="en-US">English — US</option><option value="en-GB">English — UK</option></select><small>भाषा परिवर्तन गर्दा चलिरहेको dictation रोकिन्छ। अर्को पटक नयाँ भाषा लागू हुन्छ।</small></label><label className="setting-field"><span>Text-to-speech voice</span><select value={voiceURI} onChange={e => setVoiceURI(e.target.value)}><option value="">Automatic / Device default</option>{voiceList.map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>)}</select><small>नेपाली आवाज सूचीमा नभए फोनको TTS engine ले English वा default आवाज प्रयोग गर्न सक्छ।</small></label><div className="setting-info"><b>भाषा स्वतः पहिचान</b><p>हालको Browser Speech API मा भरपर्दो Nepali-English automatic language detection छैन। त्यसैले गलत भाषा अनुमान नगर्न नेपाली र English छुट्टै चयन गर्न मिल्ने बनाइएको छ।</p></div><div className="setting-info"><b>AI आवाज र डाउनलोड</b><p>हाल Play सुविधा डिभाइसको built-in TTS हो। Browser API ले बनेको TTS अडियो फाइल export गर्दैन। डाउनलोड हुने फाइल Voice Recording section मा रेकर्ड गरिएको वास्तविक आवाज हो।</p></div><button className="modal-done" onClick={() => setSettingsOpen(false)}><Check size={16}/> Done</button></section></div>}
+
+    {historyOpen && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setHistoryOpen(false); }}><section className="settings-modal history-modal"><div className="modal-head"><div><h2><History size={19}/> Transcript History</h2><p>यो डिभाइसको ब्राउजरमा मात्र सुरक्षित हुन्छ।</p></div><button onClick={() => setHistoryOpen(false)}><X size={19}/></button></div>{history.length ? <div className="history-list">{history.map(item => <button key={item.id} onClick={() => { setText(item.text); setFormat('raw'); setHistoryOpen(false); }}><span>{item.text.slice(0, 180)}</span><small>{item.created}</small></button>)}</div> : <div className="history-empty">अहिलेसम्म कुनै टेक्स्ट सुरक्षित छैन।</div>}<button className="modal-done" onClick={() => { setHistory([]); localStorage.removeItem('nv-history'); }}> <Trash2 size={15}/> Clear history</button></section></div>}
+    {toast && <div className="toast"><Check size={16}/>{toast}</div>}
   </div>;
 }
 
