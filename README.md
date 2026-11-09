@@ -1,15 +1,27 @@
-# Nepali Voice — Voice to Text
+# Nepali Voice — Voice Workspace
 
-Nepali-first, zero-paid-API voice transcription MVP. This initial version uses the browser Web Speech Recognition API when available. It provides Raw, lightweight Clean, Unicode Nepali and approximate Roman output, editable text, copy/download, and local history.
+Nepali-first, free voice workspace with editable live dictation, separate audio recording, text copy/download, local transcript history, and device text-to-speech playback.
 
-## Important limitations
+## Current features
 
-- This is a prototype, not ChatGPT-level transcription.
-- Browser speech recognition support and Nepali (`ne-NP`) availability vary by browser/device.
-- In common browser implementations, recognition may send audio to the browser vendor's online service. This is not guaranteed offline or private processing.
-- “Clean” currently uses conservative deterministic text cleanup, not a generative AI model. “Pure Nepali” is currently a label for the same conservative cleanup; it does not perform full grammar rewriting.
-- Roman Nepali conversion is a basic phonetic approximation and needs user review.
-- Continuous recording can stop/restart depending on browser behavior; test on target devices.
+- Nepali-first speech dictation with English language selection.
+- Live interim transcript and editable writing area.
+- Raw and conservative rule-based Clean text modes.
+- Separate microphone audio recording with pause/resume, playback and audio file download.
+- Copy and download transcript as UTF-8 TXT.
+- Device/browser Text-to-Speech playback with available voice selection.
+- Browser-local transcript history and installable PWA shell.
+- Advanced settings for speech language and available TTS voice.
+
+## Important accuracy, privacy and audio limitations
+
+- Speech recognition uses the browser Web Speech API. Recognition quality and Nepali support vary by browser/device/network; no system can guarantee zero mistakes.
+- The current browser API does not provide reliable automatic Nepali-English language detection. Choose Nepali or English in Settings.
+- Browser recognition may send audio to the browser vendor's online service. It is not guaranteed offline or end-to-end private.
+- The separate audio recorder uses the device microphone and creates a downloadable recording (usually WebM/Opus, depending on browser).
+- Text-to-Speech playback uses voices installed/provided by the device/browser. The browser SpeechSynthesis API does not expose generated audio as a downloadable file, so this version cannot export TTS-generated speech.
+- “Clean” is deterministic punctuation/filler cleanup, not AI grammar correction.
+- No paid API is used. The app code is open source; device/browser recognition and TTS engines are external platform capabilities.
 
 ## Run locally
 
@@ -29,30 +41,24 @@ npm run preview
 
 ## Roadmap
 
-1. Device/browser compatibility and Nepali accuracy test matrix.
-2. Offline local ASR experiment using a multilingual Whisper model through Transformers.js / ONNX; benchmark model size, memory, latency and Nepali word error rate before adopting it.
-3. Real grammar-aware correction using a self-hosted open model only if it can run within practical free compute limits.
-4. PWA installability, Android native wrapper, then Android IME keyboard.
+1. Test real Nepali and English word error rates across target Android devices.
+2. Evaluate open-source local ASR models for Nepali/English, measuring model download size, RAM, latency and accuracy before replacing browser recognition.
+3. Integrate a genuinely downloadable open-source TTS engine with Nepali voice support; this requires bundling or hosting a model and must be benchmarked for size and quality.
+4. Add optional AI-assisted transcript correction using a self-hosted/open model only when practical free compute is available.
 
 ## Privacy
 
-History is stored in this browser's `localStorage`. Do not store sensitive speech in this MVP. Browser recognition may use a remote recognition service. No audio upload endpoint is implemented by this project.
+History is stored in this browser's `localStorage`. Do not store sensitive speech in this MVP. Browser recognition may use a remote recognition service. Audio recordings are created locally in the browser; no upload endpoint is implemented.
 
 ## Install on your phone
 
 ### Android (Chrome)
 1. Open the deployed site over HTTPS in Chrome.
-2. Tap the **Install App** button in the page, or open Chrome's **⋮** menu.
-3. Choose **Install app** (or **Add to Home screen**, depending on Chrome version).
-4. Open Nepali Voice from the new home-screen icon. It launches in standalone app mode.
+2. Tap **Install App** if available, or open Chrome's **⋮** menu.
+3. Choose **Install app** (or **Add to Home screen**).
 
 ### iPhone / iPad (Safari)
 1. Open the deployed site in Safari.
-2. Tap **Share**.
-3. Choose **Add to Home Screen**, then confirm.
+2. Tap **Share** → **Add to Home Screen**.
 
-The PWA caches the app shell after the first successful visit. This does **not** make speech recognition offline: the browser's recognition service may still require internet access.
-
-## GitHub Pages
-
-The repository includes a GitHub Actions workflow at `.github/workflows/deploy.yml`. On each push to `main`, it installs dependencies, builds the Vite app and deploys `dist` to GitHub Pages. In repository Settings → Pages, ensure the source is set to **GitHub Actions** if it is not already.
+The PWA caches the app shell after first visit. This does not make recognition or TTS offline.
