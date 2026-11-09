@@ -102,7 +102,7 @@ function App() {
     rec.onstart = () => { processedFinalIndexRef.current = 0; };
     rec.onresult = event => {
       // Ignore late events after the user pauses, stops, or clears the session.
-      if (!shouldListenRef.current || pausedRef.current || recognitionRef.current !== rec) return;
+      if (pausedRef.current || recognitionRef.current !== rec) return;
       let finalChunk = '';
       let interimChunk = '';
       const firstNewIndex = Math.max(event.resultIndex || 0, processedFinalIndexRef.current);
@@ -240,7 +240,14 @@ function App() {
     setHistory(items => [{ id: Date.now(), text: editorValue, created: new Date().toLocaleString() }, ...items].slice(0, 50));
     notify('History मा सुरक्षित भयो');
   }
-  function reset() { stopSpeech(); setText(''); setInterim(''); setError(''); }
+  function reset() {
+    stopSpeech();
+    // Invalidate pending callbacks so a late browser result cannot repopulate a cleared editor.
+    recognitionRef.current = null;
+    setText('');
+    setInterim('');
+    setError('');
+  }
 
   return <div className="app-shell">
     <header className="topbar">
