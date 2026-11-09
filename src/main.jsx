@@ -75,12 +75,16 @@ function App() {
   const fmt = n => `${Math.floor(n / 60).toString().padStart(2, '0')}:${(n % 60).toString().padStart(2, '0')}`;
 
   function cleanText(value) {
-    return value.replace(/(?:^|[\\s,])(?:अँहँ|अँ|मतलब)(?=[\\s,।!?]|$)[,\\s]*/g, ' ')
-      .replace(/\\s+([,।!?])/g, '$1').replace(/([,।!?])\\s*([,।!?])+/g, '$1')
-      .replace(/[ \\t]{2,}/g, ' ').trim();
+    return value
+      .replace(/(?:^|[\s,])(?:अँहँ|अँ|मतलब)(?=[\s,।!?]|$)[,\s]*/g, ' ')
+      .replace(/\s+([,।!?])/g, '$1')
+      .replace(/([,।!?])\s*([,।!?])+/g, '$1')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
   const editorValue = format === 'clean' ? cleanText(text) : text;
-  const wordCount = editorValue.trim() ? editorValue.trim().split(/\\s+/).length : 0;
+  const wordCount = editorValue.trim() ? editorValue.trim().split(/[\s\u200b]+/u).filter(Boolean).length : 0;
 
   function startSpeech() {
     if (!supported) { setError('यो ब्राउजरले Speech Recognition समर्थन गर्दैन। Android Chrome प्रयोग गर्नुहोस्।'); return; }
@@ -97,6 +101,8 @@ function App() {
     processedFinalIndexRef.current = 0;
     rec.onstart = () => { processedFinalIndexRef.current = 0; };
     rec.onresult = event => {
+      // Ignore late events after the user pauses, stops, or clears the session.
+      if (!shouldListenRef.current || pausedRef.current || recognitionRef.current !== rec) return;
       let finalChunk = '';
       let interimChunk = '';
       const firstNewIndex = Math.max(event.resultIndex || 0, processedFinalIndexRef.current);
@@ -115,6 +121,8 @@ function App() {
       setInterim(interimChunk);
     };
     rec.onerror = event => {
+      // "no-speech" is a normal timeout during continuous dictation; onend restarts it.
+      if (event.error === 'no-speech') return;
       const messages = {
         'not-allowed': 'माइक्रोफोन अनुमति दिनुहोस्। Browser settings मा Microphone Allow गर्नुहोस्।',
         'service-not-allowed': 'Speech service उपलब्ध छैन। इन्टरनेट र Browser permission जाँच्नुहोस्।',
@@ -129,6 +137,8 @@ function App() {
       }
     };
     rec.onend = () => {
+      // An old recognizer can finish after a newer session has already started.
+      if (recognitionRef.current !== rec) return;
       if (shouldListenRef.current && !pausedRef.current) {
         try { rec.start(); } catch { shouldListenRef.current = false; setListening(false); }
       } else if (pausedRef.current) {
@@ -246,7 +256,7 @@ function App() {
 
       <section className="editor-card">
         <div className="editor-toolbar"><div className="editor-label"><span className="editor-icon"><Languages size={17}/></span><div><b>तपाईंको लेख्ने ठाउँ</b><small>{language === 'ne-NP' ? 'नेपाली प्राथमिकता' : language === 'auto' ? 'Browser auto mode' : 'English Speech'} · {wordCount} शब्द</small></div></div><div className="format-switch"><button className={format === 'raw' ? 'chosen' : ''} onClick={() => setFormat('raw')}>Raw</button><button className={format === 'clean' ? 'chosen' : ''} onClick={() => setFormat('clean')}>Clean</button></div></div>
-        <div className="editor-wrap"><textarea className="main-editor" value={editorValue + (interim ? (editorValue && !editorValue.endsWith(' ') ? ' ' : '') + interim : '')} onChange={e => { setText(e.target.value); setFormat('raw'); }} placeholder="यहाँ टाइप गर्नुहोस् वा माइक थिचेर बोल्न सुरु गर्नुहोस्…"/><div className="editor-foot"><span>{interim ? <><i className="pulse-dot"/> {interim}</> : 'तपाईंको टेक्स्ट यहीँ स्वतः देखिनेछ'}</span><span>{editorValue.length} characters</span></div><button className={`floating-mic ${listening && !speechPaused ? 'is-listening' : ''}`} onClick={toggleSpeech} aria-label={listening ? 'Stop dictation' : 'Start dictation'} title={listening ? 'Stop dictation' : 'Start dictation'}>{listening ? <Square size={21} fill="currentColor"/> : <Mic size={23}/>}</button></div>
+        <div className="editor-wrap"><textarea className="main-editor" value={editorValue} onChange={e => { setText(e.target.value); setFormat('raw'); }} placeholder="यहाँ टाइप गर्नुहोस् वा माइक थिचेर बोल्न सुरु गर्नुहोस्…"/><div className="editor-foot"><span>{interim ? <><i className="pulse-dot"/> {interim}</> : 'तपाईंको टेक्स्ट यहीँ स्वतः देखिनेछ'}</span><span>{editorValue.length} characters</span></div><button className={`floating-mic ${listening && !speechPaused ? 'is-listening' : ''}`} onClick={toggleSpeech} aria-label={listening ? 'Stop dictation' : 'Start dictation'} title={listening ? 'Stop dictation' : 'Start dictation'}>{listening ? <Square size={21} fill="currentColor"/> : <Mic size={23}/>}</button></div>
         {listening && <div className="dictation-tools"><button onClick={speechPaused ? resumeSpeech : pauseSpeech}>{speechPaused ? <Play size={15}/> : <Pause size={15}/>} {speechPaused ? 'Resume' : 'Pause'}</button><button onClick={stopSpeech}><CircleStop size={15}/> Finish</button></div>}
         <div className="editor-actions"><button className="action-primary" onClick={copyText} disabled={!editorValue}><Copy size={16}/> Copy</button><button onClick={downloadText} disabled={!editorValue}><Download size={16}/> Download .TXT</button><button onClick={saveHistory} disabled={!editorValue}><History size={16}/> Save</button><button onClick={reset}><RotateCcw size={16}/> Clear</button><span className="action-spacer"/><button className="listen-text" onClick={speaking ? stopVoice : playVoice} disabled={!editorValue}>{speaking ? <Square size={15}/> : <Play size={15}/>} {speaking ? 'Stop voice' : 'Play voice'}</button></div>
       </section>
