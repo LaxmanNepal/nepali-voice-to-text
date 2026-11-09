@@ -30,7 +30,7 @@ self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
 
-  const isPageRequest = request.mode === 'navigate' || /\\.html?$/i.test(new URL(request.url).pathname);
+  const isPageRequest = request.mode === 'navigate' || /\.html?$/i.test(new URL(request.url).pathname);
 
   if (isPageRequest) {
     // Always check the network first so installed users receive new deployments.
